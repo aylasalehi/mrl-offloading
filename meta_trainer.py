@@ -14,16 +14,16 @@ class Trainer(object):
                 start_itr=0,
                 inner_batch_size = 500,
                 save_interval = 100):
-        self.algo = algo
-        self.env = env
-        self.sampler = sampler
-        self.sampler_processor = sample_processor
-        self.policy = policy
-        self.n_itr = n_itr
+        self.algo = algo  # The MRLCO algorithm object (from meta_algos/MRLCO.py)
+        self.env = env  # The MEC offloading environment (from env/)
+        self.sampler = sampler  # The sampler for collecting trajectories (from samplers/)
+        self.sampler_processor = sample_processor  # Processes samples (e.g., computes GAE) 
+        self.policy = policy  # The meta-policy network (from policies/)
+        self.n_itr = n_itr  # Total number of meta-training iterations (K in Algorithm 1) 
         self.start_itr = start_itr
-        self.inner_batch_size = inner_batch_size
-        self.greedy_finish_time = greedy_finish_time
-        self.save_interval = save_interval
+        self.inner_batch_size = inner_batch_size  # Batch size for the PPO inner update
+        self.greedy_finish_time = greedy_finish_time  # Pre-calculated baseline for logging 
+        self.save_interval = save_interval  # How often to save model checkpoints
 
     def train(self):
         """
