@@ -23,6 +23,10 @@ class Trainer():
         self.num_inner_grad_steps = num_inner_grad_steps
         self.batch_size = batch_size
 
+    """
+    change in train: reliability sampling
+    """
+
     def train(self):
         """
         Implement the repilte algorithm for ppo reinforcement learning
@@ -33,6 +37,9 @@ class Trainer():
         avg_vf_loss = []
 
         avg_latencies = []
+
+        avg_reliabilities = []
+
         for itr in range(self.start_itr, self.n_itr):
             itr_start_time = time.time()
             logger.log("\n ---------------- Iteration %d ----------------" % itr)
@@ -64,14 +71,21 @@ class Trainer():
 
             avg_latencies.append(avg_latency)
 
+            reliability = samples_data['reliability']
+            avg_reliability = np.mean(reliability)
+
+            avg_reliabilities.append(avg_reliability)
+
 
             logger.logkv('Itr', itr)
             logger.logkv('Average reward, ', avg_reward)
             logger.logkv('Average latency,', avg_latency)
+
+            logger.lohkv('Average reliability', avg_reliability)
             logger.dumpkvs()
             avg_ret.append(avg_reward)
 
-        return avg_ret, avg_pg_loss,avg_vf_loss, avg_latencies
+        return avg_ret, avg_pg_loss,avg_vf_loss, avg_latencies, avg_reliabilities
 
 if __name__ == "__main__":
     from env.mec_offloaing_envs.offloading_env import Resources
@@ -162,6 +176,6 @@ if __name__ == "__main__":
     with tf.Session() as sess:
         sess.run(tf.compat.v1.global_variables_initializer())
         policy.load_variables(load_path="./meta_model_offload20_25_batch_10/meta_model_2900.ckpt")
-        avg_ret, avg_pg_loss, avg_vf_loss, avg_latencies = trainer.train()
+        avg_ret, avg_pg_loss, avg_vf_loss, avg_latencies, avg_reliabilities = trainer.train()
 
 

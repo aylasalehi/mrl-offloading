@@ -25,6 +25,10 @@ class Trainer(object):
         self.greedy_finish_time = greedy_finish_time  # Pre-calculated baseline for logging 
         self.save_interval = save_interval  # How often to save model checkpoints
 
+    """
+    change in train(): reliability sampling    
+    """
+
     def train(self):
         """
         Implement the MRLCO training process for task offloading problem
@@ -34,6 +38,9 @@ class Trainer(object):
         avg_ret = []
         avg_loss = []
         avg_latencies = []
+
+        avg_reliabilities = []
+
         for itr in range(self.start_itr, self.n_itr):
             itr_start_time = time.time()
             logger.log("\n ---------------- Iteration %d ----------------" % itr)
@@ -78,16 +85,24 @@ class Trainer(object):
             avg_reward = np.mean(ret)
 
             latency = np.array([])
+
+            reliability = np.array([])
             for i in range(5):
                 latency = np.concatenate((latency, new_samples_data[i]['finish_time']), axis=-1)
+
+                reliability = np.concatenate((reliability, new_samples_data[i]['reliability']), axis=-1)
 
             avg_latency = np.mean(latency)
             avg_latencies.append(avg_latency)
 
+            avg_reliability = np.mean(reliability)
+            avg_reliabilities.append(avg_reliability)
 
             logger.logkv('Itr', itr)
             logger.logkv('Average reward, ', avg_reward)
             logger.logkv('Average latency,', avg_latency)
+
+            logger.logkv('Average reliability', avg_reliability)
 
             logger.dumpkvs()
             avg_ret.append(avg_reward)
@@ -97,7 +112,7 @@ class Trainer(object):
 
         self.policy.core_policy.save_variables(save_path="./meta_model_inner_step1/meta_model_final.ckpt")
 
-        return avg_ret, avg_loss, avg_latencies
+        return avg_ret, avg_loss, avg_latencies, avg_reliabilities
 
 
 if __name__ == "__main__":
@@ -194,6 +209,6 @@ if __name__ == "__main__":
 
     with tf.compat.v1.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        avg_ret, avg_loss, avg_latencies = trainer.train()
+        avg_ret, avg_loss, avg_latencies, avg_reliabilities = trainer.train()
 
 

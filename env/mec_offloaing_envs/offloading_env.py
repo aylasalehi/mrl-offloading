@@ -185,6 +185,10 @@ class OffloadingEnvironment(MetaEnv):
         """
         return self.graph_file_paths[self.task_id]
 
+    """
+    change in step() function: reliability added
+    """
+
     def step(self, action):
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
@@ -223,7 +227,7 @@ class OffloadingEnvironment(MetaEnv):
 
             plan_batch.append(plan_sequence)
 
-        reward_batch, task_finish_time= self.get_reward_batch_step_by_step(plan_batch,
+        reward_batch, task_finish_time, total_reliability_batch = self.get_reward_batch_step_by_step(plan_batch,
                                                   task_graph_batch,
                                                   max_running_time_batch,
                                                   min_running_time_batch,
@@ -234,7 +238,9 @@ class OffloadingEnvironment(MetaEnv):
         observation = np.array(self.encoder_batchs[self.task_id])
         info = task_finish_time
 
-        return observation, reward_batch, done, info
+        rel_info = total_reliability_batch
+
+        return observation, reward_batch, done, info, rel_info
 
     def reset(self):
         """Resets the state of the environment and returns an initial observation.
@@ -382,6 +388,12 @@ class OffloadingEnvironment(MetaEnv):
         FT_wr = [0] * task_graph.task_number
         current_FT = 0.0
         total_energy = 0.0
+
+        """
+        total_reliability added
+        """
+        total_reliability = 1.0
+
         return_latency = []
         return_energy = []
 
@@ -469,7 +481,12 @@ class OffloadingEnvironment(MetaEnv):
             current_FT = max(task_finish_time, current_FT)
             return_latency.append(delta_make_span)
 
-        return return_latency, current_FT
+            """
+            total_reliability update
+            """
+            total_reliability *= reliability
+
+        return return_latency, current_FT, total_reliability
 
     def score_func(self, cost, max_time, min_time):
         return -(cost - min_time) / (max_time - min_time)
@@ -483,6 +500,12 @@ class OffloadingEnvironment(MetaEnv):
                                       max_reliability_batch, min_reliability_batch):
         target_batch = []
         task_finish_time_batch = []
+
+        """
+        total_reliability_batch definition
+        """
+        total_reliability_batch = []
+
         for i in range(len(action_sequence_batch)):
             max_running_time = max_running_time_batch[i]
             min_running_time = min_running_time_batch[i]
@@ -490,7 +513,7 @@ class OffloadingEnvironment(MetaEnv):
             task_graph = task_graph_batch[i]
             self.resource_cluster.reset()
             plan = action_sequence_batch[i]
-            cost, task_finish_time = self.get_scheduling_cost_step_by_step(plan, task_graph)
+            cost, task_finish_time, total_reliability = self.get_scheduling_cost_step_by_step(plan, task_graph)
 
             latency = self.score_func(cost, max_running_time, min_running_time)
 
@@ -499,8 +522,10 @@ class OffloadingEnvironment(MetaEnv):
             target_batch.append(score)
             task_finish_time_batch.append(task_finish_time)
 
+            total_reliability_batch.append(total_reliability)
+
         target_batch = np.array(target_batch)
-        return target_batch, task_finish_time_batch
+        return target_batch, task_finish_time_batch, total_reliability_batch
 
     def greedy_solution(self):
         result_plan = []

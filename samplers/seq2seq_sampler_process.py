@@ -32,6 +32,9 @@ class Seq2SeSamplerProcessor(SampleProcessor):
 
         return samples_data
 
+    """
+    change in _compute_samples_data: reliability sampling
+    """
 
     def _compute_samples_data(self, paths):
         assert type(paths) == list
@@ -47,7 +50,7 @@ class Seq2SeSamplerProcessor(SampleProcessor):
         # 3) compute advantages and adjusted rewards
         paths = self._compute_advantages(paths, all_path_baselines)
 
-        observations, actions, logits, rewards, returns, values, advantages, finish_time = self._append_path_data(paths)
+        observations, actions, logits, rewards, returns, values, advantages, finish_time, reliability = self._append_path_data(paths)
 
         decoder_full_lengths = np.array(observations.shape[0] * [observations.shape[1]])
         # 5) if desired normalize / shift advantages
@@ -66,10 +69,15 @@ class Seq2SeSamplerProcessor(SampleProcessor):
             returns=returns,
             values=values,
             advantages=advantages,
-            finish_time=finish_time
+            finish_time=finish_time,
+            reliability=reliability
         )
 
         return samples_data, paths
+
+    """
+    change in _append_path_data: reliability sampling
+    """
 
     def _append_path_data(self, paths):
         observations = np.array([path["observations"] for path in paths])
@@ -82,5 +90,7 @@ class Seq2SeSamplerProcessor(SampleProcessor):
         advantages = np.array([path["advantages"] for path in paths])
         finish_time = np.array([path["finish_time"] for path in paths])
 
-        return observations, actions, logits, rewards, returns, values, advantages, finish_time
+        reliability = np.array(path['reliability'] for path in paths)
+
+        return observations, actions, logits, rewards, returns, values, advantages, finish_time, reliability
 

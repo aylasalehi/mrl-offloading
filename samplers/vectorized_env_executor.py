@@ -21,6 +21,10 @@ class MetaIterativeEnvExecutor(object):
         self.ts = np.zeros(len(self.envs), dtype='int')  # time steps
         self.max_path_length = max_path_length
 
+    """
+    change in step() function: reliability sampling
+    """
+
     def step(self, actions):
         """
         Steps the wrapped environments with the provided actions
@@ -38,7 +42,7 @@ class MetaIterativeEnvExecutor(object):
         all_results = [env.step(a) for (a, env) in zip(actions, self.envs)]
 
         # stack results split to obs, rewards, ...
-        obs, rewards, dones, env_infos = list(map(list, zip(*all_results)))
+        obs, rewards, dones, env_infos, rel_infos = list(map(list, zip(*all_results)))
 
         # reset env when done or max_path_length reached
         dones = np.asarray(dones)
@@ -48,7 +52,7 @@ class MetaIterativeEnvExecutor(object):
             obs[i] = self.envs[i].reset()
             self.ts[i] = 0
 
-        return obs, rewards, dones, env_infos
+        return obs, rewards, dones, env_infos, rel_infos
 
     def set_tasks(self, tasks):
         """
@@ -114,6 +118,10 @@ class MetaParallelEnvExecutor(object):
         for remote in self.work_remotes:
             remote.close()
 
+    """
+    change in step() func: reliability sampling
+    """
+
     def step(self, actions):
         """
         Executes actions on each env
@@ -137,9 +145,9 @@ class MetaParallelEnvExecutor(object):
 
         results = [remote.recv() for remote in self.remotes]
 
-        obs, rewards, dones, env_infos = map(lambda x: sum(x, []), zip(*results))
+        obs, rewards, dones, env_infos, rel_infos = map(lambda x: sum(x, []), zip(*results))
 
-        return obs, rewards, dones, env_infos
+        return obs, rewards, dones, env_infos, rel_infos
 
     def reset(self):
         """
@@ -175,6 +183,11 @@ class MetaParallelEnvExecutor(object):
         return self.n_envs
 
 
+"""
+change in worker: reliability sampling
+"""
+
+
 def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
     """
     Instantiation of a parallel worker for collecting samples. It loops continually checking the task that the remote
@@ -202,14 +215,14 @@ def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
         # do a step in each of the environment of the worker
         if cmd == 'step':
             all_results = [env.step(a) for (a, env) in zip(data, envs)]
-            obs, rewards, dones, infos = map(list, zip(*all_results))
+            obs, rewards, dones, infos, rel_infos = map(list, zip(*all_results))
             ts += 1
             for i in range(n_envs):
                 if dones[i] or (ts[i] >= max_path_length):
                     dones[i] = True
                     obs[i] = envs[i].reset()
                     ts[i] = 0
-            remote.send((obs, rewards, dones, infos))
+            remote.send((obs, rewards, dones, infos, rel_infos))
 
         # reset all the environments of the worker
         elif cmd == 'reset':

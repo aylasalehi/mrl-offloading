@@ -39,6 +39,10 @@ class Seq2SeqSampler(Sampler):
         self.total_timesteps_sampled = 0
         self.env = env
 
+    """
+    change in obtain_samples: reliability sampling
+    """
+
     def obtain_samples(self, log=False, log_prefix=''):
         """
         Collect batch_size trajectories from each task
@@ -75,20 +79,22 @@ class Seq2SeqSampler(Sampler):
 
             # step environments
             t = time.time()
-            next_obses, rewards, dones, env_infos = self.env.step(actions)
+            next_obses, rewards, dones, env_infos, rel_infos = self.env.step(actions)
 
             env_time += time.time() - t
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
             new_samples = 0
-            for observation, action, logit, reward, value, finish_time in zip(obses, actions, logits,
-                                                                       rewards, values, env_infos):
+            for observation, action, logit, reward, value, finish_time, reliability in zip(obses, actions, logits,
+                                                                       rewards, values, env_infos, rel_infos):
                 running_paths["observations"] = observation
                 running_paths["actions"] = action
                 running_paths["logits"] = logit
                 running_paths["rewards"] = reward
                 running_paths["values"] = value
                 running_paths["finish_time"] = finish_time
+
+                running_paths["reliability"] = reliability
                 # handling
 
                 paths.append(dict(
@@ -97,7 +103,8 @@ class Seq2SeqSampler(Sampler):
                     logits=np.squeeze(np.asarray(running_paths["logits"])),
                     rewards=np.squeeze(np.asarray(running_paths["rewards"])),
                     values=np.squeeze(np.asarray(running_paths["values"])),
-                    finish_time=np.squeeze(np.asarray(running_paths["finish_time"]))
+                    finish_time=np.squeeze(np.asarray(running_paths["finish_time"])),
+                    reliability=np.squeeze(np.asarray(running_paths["reliability"]))
                 ))
 
                 # if running path is done, add it to paths and empty the running path
