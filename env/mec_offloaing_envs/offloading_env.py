@@ -5,6 +5,12 @@ from samplers.vectorized_env_executor import MetaIterativeEnvExecutor
 import numpy as np
 import os
 
+"""
+import math for exp() function
+"""
+import math
+
+
 class Resources(object):
     """
     This class denotes the MEC server and Mobile devices (computation resources)
@@ -59,17 +65,32 @@ class OffloadingEnvironment(MetaEnv):
                  graph_number,
                  graph_file_paths, time_major):
         self.resource_cluster = resource_cluster
+
+        """
+        Failure_rate field added for Reliability computation (only for uplink, server, downlink)
+        """
+        self.failure_rate_mec = 0.00006
+        self.failure_rate_local = 0.0
+
         self.task_graphs_batchs = []
         self.encoder_batchs = []
         self.encoder_lengths = []
         self.decoder_full_lengths = []
         self.max_running_time_batchs = []
         self.min_running_time_batchs = []
+
+        """
+        max/min_reliability_batchs
+        """
+        self.max_reliability_batchs = []
+        self.min_reliability_batchs = []
+
         self.graph_file_paths = graph_file_paths
 
         # load all the task graphs into the evnironment
         for graph_file_path in graph_file_paths:
-            encoder_batchs, encoder_lengths, task_graph_batchs, decoder_full_lengths, max_running_time_batchs, min_running_time_batchs = \
+            encoder_batchs, encoder_lengths, task_graph_batchs, decoder_full_lengths, max_running_time_batchs, min_running_time_batchs, \
+                max_reliability_batchs, min_reliability_batchs = \
                 self.generate_point_batch_for_random_graphs(batch_size, graph_number, graph_file_path, time_major)
 
             self.encoder_batchs += encoder_batchs
@@ -78,6 +99,9 @@ class OffloadingEnvironment(MetaEnv):
             self.decoder_full_lengths += decoder_full_lengths
             self.max_running_time_batchs += max_running_time_batchs
             self.min_running_time_batchs += min_running_time_batchs
+
+            self.max_reliability_batchs += max_reliability_batchs
+            self.min_reliability_batchs += min_reliability_batchs
 
         self.total_task = len(self.encoder_batchs)
         self.optimal_solution = -1
@@ -113,11 +137,16 @@ class OffloadingEnvironment(MetaEnv):
         max_running_time_batchs = []
         min_running_time_batchs = []
 
+        max_reliability_batchs = []
+        min_reliability_batchs = []
+
         for encoder_batch, encoder_length, task_graphs_batch, \
             decoder_full_length, max_running_time_batch, \
-            min_running_time_batch in zip(self.encoder_batchs, self.encoder_lengths,
+            min_running_time_batch, max_reliability_batch, \
+            min_reliability_batch in zip(self.encoder_batchs, self.encoder_lengths,
                                           self.task_graphs_batchs, self.decoder_full_lengths,
-                                          self.max_running_time_batchs, self.min_running_time_batchs):
+                                          self.max_running_time_batchs, self.min_running_time_batchs,
+                                          self.max_reliability_batchs, self.min_reliability_batchs):
             encoder_batchs += encoder_batch.tolist()
             encoder_lengths += encoder_length.tolist()
             task_graphs_batchs += task_graphs_batch
@@ -125,12 +154,18 @@ class OffloadingEnvironment(MetaEnv):
             max_running_time_batchs += max_running_time_batch
             min_running_time_batchs += min_running_time_batch
 
+            max_reliability_batchs += max_reliability_batch
+            min_reliability_batchs += min_reliability_batch
+
         self.encoder_batchs = np.array([encoder_batchs])
         self.encoder_lengths = np.array([encoder_lengths])
         self.task_graphs_batchs = [task_graphs_batchs]
         self.decoder_full_lengths = np.array([decoder_full_lengths])
         self.max_running_time_batchs = np.array([max_running_time_batchs])
         self.min_running_time_batchs = np.array([min_running_time_batchs])
+
+        self.max_reliability_batchs = np.array([max_reliability_batchs])
+        self.min_reliability_batchs = np.array([min_reliability_batchs])
 
     def set_task(self, task):
         """
@@ -171,6 +206,15 @@ class OffloadingEnvironment(MetaEnv):
         max_running_time_batch = self.max_running_time_batchs[self.task_id]
         min_running_time_batch = self.min_running_time_batchs[self.task_id]
 
+        """Reliability Computation:
+            Normalization:
+                min_reliability
+                max_reliability
+                computation in calculate_max_min_runningcost function invoked in generate_point_batch_for_random_graphs
+        """
+        max_reliability_batch = self.max_reliability_batchs[self.task_id]
+        min_reliability_batch = self.min_reliability_batchs[self.task_id]
+
         for action_sequence, task_graph in zip(action, task_graph_batch):
             plan_sequence = []
 
@@ -182,7 +226,9 @@ class OffloadingEnvironment(MetaEnv):
         reward_batch, task_finish_time= self.get_reward_batch_step_by_step(plan_batch,
                                                   task_graph_batch,
                                                   max_running_time_batch,
-                                                  min_running_time_batch)
+                                                  min_running_time_batch,
+                                                  max_reliability_batch,
+                                                  min_reliability_batch)
 
         done = True
         observation = np.array(self.encoder_batchs[self.task_id])
@@ -204,6 +250,10 @@ class OffloadingEnvironment(MetaEnv):
     def render(self, mode='human'):
         pass
 
+    """
+    change in generate_point_batch_for_random_graphs
+    """
+
     def generate_point_batch_for_random_graphs(self, batch_size, graph_number, graph_file_path, time_major):
         encoder_list = []
         task_graph_list = []
@@ -216,17 +266,36 @@ class OffloadingEnvironment(MetaEnv):
         max_running_time_vector = []
         min_running_time_vector = []
 
+        """
+        storing max, min reliability
+        """
+
+        max_reliability_vector = []
+        min_reliability_vector = []
+
         max_running_time_batchs = []
         min_running_time_batchs = []
+
+        """
+        storing max, min reliability batches (for graphs in a batch)
+        """
+        max_reliability_batchs = []
+        min_reliability_batchs = []
 
         for i in range(graph_number):
             task_graph = OffloadingTaskGraph(graph_file_path + str(i) + '.gv')
             task_graph_list.append(task_graph)
 
-            max_time, min_time = self.calculate_max_min_runningcost(task_graph.max_data_size,
+            max_time, min_time, max_reliability, min_reliability = self.calculate_max_min_runningcost(task_graph.max_data_size,
                                                                     task_graph.min_data_size)
             max_running_time_vector.append(max_time)
             min_running_time_vector.append(min_time)
+
+            """
+            storing max, min reliability
+            """
+            max_reliability_vector.append(max_reliability)
+            min_reliability_vector.append(min_reliability)
 
             # the scheduling sequence will also store in self.'prioritize_sequence'
             scheduling_sequence = task_graph.prioritize_tasks(self.resource_cluster)
@@ -256,10 +325,19 @@ class OffloadingEnvironment(MetaEnv):
             max_running_time_batchs.append(max_running_time_vector[start_batch_index:end_batch_index])
             min_running_time_batchs.append(min_running_time_vector[start_batch_index:end_batch_index])
 
+            """
+            max/min_reliability_batchs update
+            """
+            max_reliability_batchs.append(max_reliability_vector[start_batch_index:end_batch_index])
+            min_reliability_batchs.append(min_reliability_vector[start_batch_index:end_batch_index])
+
         return encoder_batchs, encoder_lengths, task_graph_batchs, \
                decoder_full_lengths, max_running_time_batchs, \
-               min_running_time_batchs
+               min_running_time_batchs, max_reliability_batchs, min_reliability_batchs
 
+    """
+    change in calculate_max_min_runningcost
+    """
     def calculate_max_min_runningcost(self, max_data_size, min_data_size):
         max_time = max( [self.resource_cluster.up_transmission_cost(max_data_size),
                          self.resource_cluster.dl_transmission_cost(max_data_size),
@@ -267,7 +345,19 @@ class OffloadingEnvironment(MetaEnv):
 
         min_time = self.resource_cluster.mec_execution_cost(min_data_size)
 
-        return max_time, min_time
+        """
+        max_reliability
+        min_reliability
+        reliability_local = 1
+        reliability_mec < 1
+        """
+        max_reliability = max([math.exp(-self.resource_cluster.up_transmission_cost(max_data_size) * self.failure_rate_mec),
+                        math.exp(-self.resource_cluster.dl_transmission_cost(max_data_size) * self.failure_rate_mec),
+                        math.exp(-self.resource_cluster.locally_execution_cost(max_data_size) * self.failure_rate_local)])
+
+        min_reliability = math.exp(-self.resource_cluster.mec_execution_cost(min_data_size) * self.failure_rate_mec)
+
+        return max_time, min_time, max_reliability, min_reliability
 
     def get_scheduling_cost_step_by_step(self, plan, task_graph):
         cloud_avaliable_time = 0.0
@@ -316,6 +406,12 @@ class OffloadingEnvironment(MetaEnv):
 
                 # calculate the energy consumption
                 #energy_consumption = T_l[i] * self.rho * (self.f_l ** self.zeta)
+
+                """
+                calculate reliability: local execution
+                """
+                reliability = math.exp(-T_l[i] * self.failure_rate_local)
+
             # mcc scheduling
             else:
                 if len(task_graph.pre_task_sets[i]) != 0:
@@ -363,6 +459,11 @@ class OffloadingEnvironment(MetaEnv):
 
                 task_finish_time = wr_finish_time
 
+                """
+                calculate reliability: mec execution
+                """
+                reliability = math.exp(-self.failure_rate_mec * (T_ul[i] + T_dl[i] + self.resource_cluster.mec_execution_cost(task.processing_data_size)))
+
             # print("task  {} finish time is {}".format(i , task_finish_time))
             delta_make_span = max(task_finish_time, current_FT) - current_FT
             current_FT = max(task_finish_time, current_FT)
@@ -373,8 +474,13 @@ class OffloadingEnvironment(MetaEnv):
     def score_func(self, cost, max_time, min_time):
         return -(cost - min_time) / (max_time - min_time)
 
+    """
+    change in get_reward_batch_step_by_step: reliability added
+    """
+
     def get_reward_batch_step_by_step(self, action_sequence_batch, task_graph_batch,
-                                      max_running_time_batch, min_running_time_batch):
+                                      max_running_time_batch, min_running_time_batch,
+                                      max_reliability_batch, min_reliability_batch):
         target_batch = []
         task_finish_time_batch = []
         for i in range(len(action_sequence_batch)):
