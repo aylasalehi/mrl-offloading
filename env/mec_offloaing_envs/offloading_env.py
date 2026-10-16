@@ -365,10 +365,19 @@ class OffloadingEnvironment(MetaEnv):
 
         return max_time, min_time, max_reliability, min_reliability
 
+    """
+    change in get_scheduling_cost_step_by_step: reliability computation added + wr_available_time
+    """
+
     def get_scheduling_cost_step_by_step(self, plan, task_graph):
         cloud_avaliable_time = 0.0
         ws_avaliable_time =0.0
         local_avaliable_time = 0.0
+
+        """
+        downlink available time
+        """
+        wr_available_time = 0.0
 
         # running time on local processor
         T_l = [0] * task_graph.task_number
@@ -426,9 +435,12 @@ class OffloadingEnvironment(MetaEnv):
 
             # mcc scheduling
             else:
+                """
+                FT_wr[j] for parents
+                """
                 if len(task_graph.pre_task_sets[i]) != 0:
                     ws_start_time = max(ws_avaliable_time,
-                                        max([max(FT_locally[j], FT_ws[j])  for j in task_graph.pre_task_sets[i]]))
+                                        max([max(FT_locally[j], FT_wr[j])  for j in task_graph.pre_task_sets[i]]))
 
                     T_ul[i] = self.resource_cluster.up_transmission_cost(task.processing_data_size)
                     ws_finish_time = ws_start_time + T_ul[i]
@@ -442,10 +454,18 @@ class OffloadingEnvironment(MetaEnv):
                     # print("task {}, Cloud finish time {}".format(i, FT_cloud[i]))
                     cloud_avaliable_time = cloud_finish_time
 
-                    wr_start_time = FT_cloud[i]
+                    """
+                    wr_start_time = max(FT_cloud[i], wr_available_time)
+                    """
+                    wr_start_time = max(wr_available_time, FT_cloud[i])
                     T_dl[i] = self.resource_cluster.dl_transmission_cost(task.transmission_data_size)
                     wr_finish_time = wr_start_time + T_dl[i]
                     FT_wr[i] = wr_finish_time
+
+                    """
+                    update wr_available_time
+                    """
+                    wr_available_time = wr_finish_time
 
                     # calculate the energy consumption
                     #energy_consumption = T_ul[i] * self.ptx + T_dl[i] * self.prx
@@ -456,15 +476,27 @@ class OffloadingEnvironment(MetaEnv):
                     ws_finish_time = ws_start_time + T_ul[i]
                     FT_ws[i] = ws_finish_time
 
+                    """
+                    update ws_available_time
+                    """
+                    ws_avaliable_time = ws_finish_time
+
                     cloud_start_time = max(cloud_avaliable_time, FT_ws[i])
                     cloud_finish_time = cloud_start_time + self.resource_cluster.mec_execution_cost(task.processing_data_size)
                     FT_cloud[i] = cloud_finish_time
                     cloud_avaliable_time = cloud_finish_time
 
-                    wr_start_time = FT_cloud[i]
+                    """
+                    wr_start_time = max(wr_available_time, FT_cloud[i])
+                    """
+                    wr_start_time = max(wr_available_time, FT_cloud[i])
                     T_dl[i] = self.resource_cluster.dl_transmission_cost(task.transmission_data_size)
                     wr_finish_time = wr_start_time + T_dl[i]
                     FT_wr[i] = wr_finish_time
+                    """
+                    update wr_available_time
+                    """
+                    wr_available_time = wr_finish_time
 
                     # calculate the energy consumption
                     #energy_consumption = T_ul[i] * self.ptx + T_dl[i] * self.prx
@@ -487,6 +519,7 @@ class OffloadingEnvironment(MetaEnv):
             total_reliability *= reliability
 
         return return_latency, current_FT, total_reliability
+
 
     def score_func(self, cost, max_time, min_time):
         return -(cost - min_time) / (max_time - min_time)
@@ -527,6 +560,10 @@ class OffloadingEnvironment(MetaEnv):
         target_batch = np.array(target_batch)
         return target_batch, task_finish_time_batch, total_reliability_batch
 
+    """
+    change in greedy_solution: wr_available/start_time changed
+    """
+
     def greedy_solution(self):
         result_plan = []
         finish_time_batchs = []
@@ -537,6 +574,10 @@ class OffloadingEnvironment(MetaEnv):
                 cloud_avaliable_time = 0.0
                 ws_avaliable_time = 0.0
                 local_avaliable_time = 0.0
+                """
+                wr_available_time
+                """
+                wr_available_time = 0.0
 
                 # finish time on cloud for each task
                 FT_cloud = [0] * task_graph.task_number
@@ -563,8 +604,11 @@ class OffloadingEnvironment(MetaEnv):
 
                     # calculate the remote finish time
                     if len(task_graph.pre_task_sets[i]) != 0:
+                        """
+                        FT_wr[j] for parents
+                        """
                         ws_start_time = max(ws_avaliable_time,
-                                            max([max(FT_locally[j], FT_ws[j]) for j in task_graph.pre_task_sets[i]]))
+                                            max([max(FT_locally[j], FT_wr[j]) for j in task_graph.pre_task_sets[i]]))
                         FT_ws[i] = ws_start_time + self.resource_cluster.up_transmission_cost(task.processing_data_size)
                         cloud_start_time = max(cloud_avaliable_time,
                                                max([max(FT_ws[i], FT_cloud[j]) for j in task_graph.pre_task_sets[i]]))
@@ -572,7 +616,10 @@ class OffloadingEnvironment(MetaEnv):
                             task.processing_data_size)
                         FT_cloud[i] = cloud_finish_time
                         # print("task {}, Cloud finish time {}".format(i, FT_cloud[i]))
-                        wr_start_time = FT_cloud[i]
+                        """
+                        wr_start_time = max(wr_available_time, FT_cloud[i])
+                        """
+                        wr_start_time = max(wr_available_time, FT_cloud[i])
                         wr_finish_time = wr_start_time + self.resource_cluster.dl_transmission_cost(task.transmission_data_size)
                         FT_wr[i] = wr_finish_time
                     else:
@@ -583,7 +630,10 @@ class OffloadingEnvironment(MetaEnv):
                         cloud_start_time = max(cloud_avaliable_time, FT_ws[i])
                         FT_cloud[i] = cloud_start_time + self.resource_cluster.mec_execution_cost(
                             task.processing_data_size)
-                        FT_wr[i] = FT_cloud[i] + self.resource_cluster.dl_transmission_cost(task.transmission_data_size)
+                        """
+                        wr_start_time = max(wr_available_time, FT_cloud[i])
+                        """
+                        FT_wr[i] = max(wr_available_time, FT_cloud[i]) + self.resource_cluster.dl_transmission_cost(task.transmission_data_size)
 
                     if FT_locally[i] < FT_wr[i]:
                         action = 0
@@ -596,6 +646,10 @@ class OffloadingEnvironment(MetaEnv):
                         FT_locally[i] = 0.0
                         cloud_avaliable_time = FT_cloud[i]
                         ws_avaliable_time = FT_ws[i]
+                        """
+                        update wr_available_time
+                        """
+                        wr_available_time = FT_wr[i]
                     plan.append((i, action))
 
                 finish_time = max( max(FT_wr), max(FT_locally) )
