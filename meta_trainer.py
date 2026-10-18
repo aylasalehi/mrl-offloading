@@ -159,14 +159,20 @@ if __name__ == "__main__":
                                 ],
                                 time_major=False)
 
-    action, greedy_finish_time = env.greedy_solution()
+    action, greedy_finish_time, greedy_reliability = env.greedy_solution()
     print("avg greedy solution: ", np.mean(greedy_finish_time))
+
+    print("avg greedy solution: ", np.mean(greedy_reliability))
     print()
-    finish_time = env.get_all_mec_execute_time()
+    finish_time, reliability = env.get_all_mec_execute_time()
     print("avg all remote solution: ", np.mean(finish_time))
+
+    print("avg all remote solution: ", np.mean(reliability))
     print()
-    finish_time = env.get_all_locally_execute_time()
+    finish_time, reliability = env.get_all_locally_execute_time()
     print("avg all local solution: ", np.mean(finish_time))
+
+    print("avg all local solution: ", np.mean(reliability))
     print()
 
     baseline = ValueFunctionBaseline()

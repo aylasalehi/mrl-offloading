@@ -81,7 +81,7 @@ class Trainer():
             logger.logkv('Average reward, ', avg_reward)
             logger.logkv('Average latency,', avg_latency)
 
-            logger.lohkv('Average reliability', avg_reliability)
+            logger.logkv('Average reliability', avg_reliability)
             logger.dumpkvs()
             avg_ret.append(avg_reward)
 
@@ -114,11 +114,13 @@ if __name__ == "__main__":
     print("calculate baseline solution======")
 
     env.set_task(0)
-    action, finish_time = env.greedy_solution()
-    target_batch, task_finish_time_batch = env.get_reward_batch_step_by_step(action[env.task_id],
+    action, finish_time, reliability = env.greedy_solution()
+    target_batch, task_finish_time_batch, total_reliability_batch = env.get_reward_batch_step_by_step(action[env.task_id],
                                           env.task_graphs_batchs[env.task_id],
                                           env.max_running_time_batchs[env.task_id],
-                                          env.min_running_time_batchs[env.task_id])
+                                          env.min_running_time_batchs[env.task_id],
+                                          env.max_reliability_batchs[env.task_id],
+                                          env.min_reliability_batchs[env.task_id])
     discounted_reward = []
     for reward_path in target_batch:
         discounted_reward.append(utils.discount_cumsum(reward_path, 1.0)[0])
@@ -127,12 +129,18 @@ if __name__ == "__main__":
     print("avg greedy solution: ", np.mean(task_finish_time_batch))
     print("avg greedy solution: ", np.mean(finish_time))
 
+    print("avg greedy solution: ", np.mean(total_reliability_batch))
+
     print()
-    finish_time, energy_cost = env.get_all_mec_execute_time()
+    finish_time, reliability = env.get_all_mec_execute_time()
     print("avg all remote solution: ", np.mean(finish_time))
+
+    print("avg all remote solution: ", np.mean(reliability))
     print()
-    finish_time, energy_cost = env.get_all_locally_execute_time()
+    finish_time, reliability = env.get_all_locally_execute_time()
     print("avg all local solution: ", np.mean(finish_time))
+
+    print("avg all local solution: ", np.mean(reliability))
 
     policy = Seq2SeqPolicy(obs_dim=17,
                            encoder_units=128,
@@ -175,7 +183,7 @@ if __name__ == "__main__":
 
     with tf.Session() as sess:
         sess.run(tf.compat.v1.global_variables_initializer())
-        policy.load_variables(load_path="./meta_model_offload20_25_batch_10/meta_model_2900.ckpt")
+        policy.load_variables(load_path="./meta_model_inner_step1/meta_model_final.ckpt")
         avg_ret, avg_pg_loss, avg_vf_loss, avg_latencies, avg_reliabilities = trainer.train()
 
 

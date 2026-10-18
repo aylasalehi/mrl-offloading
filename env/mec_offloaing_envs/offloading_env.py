@@ -114,8 +114,8 @@ class OffloadingEnvironment(MetaEnv):
         self.graph_number = graph_number
 
 
-        self.local_exe_time = self.get_all_locally_execute_time()
-        self.mec_exe_time = self.get_all_mec_execute_time()
+        self.local_exe_time, _ = self.get_all_locally_execute_time()
+        self.mec_exe_time, _ = self.get_all_mec_execute_time()
 
     def sample_tasks(self, n_tasks):
         """
@@ -561,15 +561,23 @@ class OffloadingEnvironment(MetaEnv):
         return target_batch, task_finish_time_batch, total_reliability_batch
 
     """
-    change in greedy_solution: wr_available/start_time changed
+    change in greedy_solution: wr_available/start_time changed + reliability computation
     """
 
     def greedy_solution(self):
         result_plan = []
         finish_time_batchs = []
+        """
+        reliability_batchs = []
+        """
+        reliability_batchs = []
         for task_graph_batch in self.task_graphs_batchs:
             plan_batchs = []
             finish_time_plan = []
+            """
+            reliability_plan = []
+            """
+            reliability_plan = []
             for task_graph in task_graph_batch:
                 cloud_avaliable_time = 0.0
                 ws_avaliable_time = 0.0
@@ -578,6 +586,11 @@ class OffloadingEnvironment(MetaEnv):
                 wr_available_time
                 """
                 wr_available_time = 0.0
+
+                """
+                reliability initialization
+                """
+                total_reliability = 1.0
 
                 # finish time on cloud for each task
                 FT_cloud = [0] * task_graph.task_number
@@ -641,6 +654,11 @@ class OffloadingEnvironment(MetaEnv):
                         FT_wr[i] = 0.0
                         FT_cloud[i] = 0.0
                         FT_ws[i] = 0.0
+
+                        """
+                        local reliability
+                        """
+                        reliability = math.exp(-self.failure_rate_local * local_running_time)
                     else:
                         action = 1
                         FT_locally[i] = 0.0
@@ -650,16 +668,32 @@ class OffloadingEnvironment(MetaEnv):
                         update wr_available_time
                         """
                         wr_available_time = FT_wr[i]
+
+                        """
+                        mec reliability
+                        """
+                        reliability = math.exp(-self.failure_rate_mec * (self.resource_cluster.up_transmission_cost(task.processing_data_size)+ self.resource_cluster.mec_execution_cost(
+                            task.processing_data_size) + self.resource_cluster.dl_transmission_cost(task.transmission_data_size)))
                     plan.append((i, action))
+
+                    total_reliability *= reliability
 
                 finish_time = max( max(FT_wr), max(FT_locally) )
                 plan_batchs.append(plan)
                 finish_time_plan.append(finish_time)
 
+                reliability_plan.append(total_reliability)
+
             finish_time_batchs.append(finish_time_plan)
             result_plan.append(plan_batchs)
 
-        return result_plan, finish_time_batchs
+            reliability_batchs.append(reliability_plan)
+
+        return result_plan, finish_time_batchs, reliability_batchs
+
+    """
+    change in calculate_optimal_solution: reliability sampling
+    """
 
     def calculate_optimal_solution(self):
         # Finding the optimal solution via exhausting search the solution space.
@@ -692,13 +726,17 @@ class OffloadingEnvironment(MetaEnv):
                 plans_costs = []
                 prioritize_plan = []
 
+                plans_rels = []
+
                 for plan in plan_batch:
                     plan_sequence = []
                     for action, task_id in zip(plan, task_graph.prioritize_sequence):
                         plan_sequence.append((task_id, action))
 
-                    cos, task_finish_time = self.get_scheduling_cost_step_by_step(plan_sequence, task_graph)
+                    cos, task_finish_time, task_reliability = self.get_scheduling_cost_step_by_step(plan_sequence, task_graph)
                     plans_costs.append(task_finish_time)
+
+                    plans_rels.append(task_reliability)
 
                     prioritize_plan.append(plan_sequence)
 
@@ -716,9 +754,16 @@ class OffloadingEnvironment(MetaEnv):
         self.optimal_solution = task_graph_optimal_costs
         return task_graph_optimal_costs, optimal_plan
 
+    """
+    change in get_running_cost: reliability sampling
+    """
+
     def get_running_cost(self, action_sequence_batch, task_graph_batch):
         cost_batch = []
         energy_batch = []
+
+        reliability_batch = []
+
         for action_sequence, task_graph in zip(action_sequence_batch,
                                                task_graph_batch):
             plan_sequence = []
@@ -727,42 +772,55 @@ class OffloadingEnvironment(MetaEnv):
                                        task_graph.prioritize_sequence):
                 plan_sequence.append((task_id, action))
 
-                _, task_finish_time = self.get_scheduling_cost_step_by_step(plan_sequence, task_graph)
+                _, task_finish_time, task_reliability = self.get_scheduling_cost_step_by_step(plan_sequence, task_graph)
 
             cost_batch.append(task_finish_time)
 
-        return cost_batch
+            reliability_batch.append(task_reliability)
 
+        return cost_batch, reliability_batch
+
+    """
+    change in get_all_locally_execute_time: reliability sampling
+    """
     def get_all_locally_execute_time(self):
         running_cost = []
+
+        running_rel = []
         for task_graph_batch, encode_batch in zip(self.task_graphs_batchs, self.encoder_batchs):
             batch_size = encode_batch.shape[0]
             sequence_length = encode_batch.shape[1]
 
             scheduling_action = np.zeros(shape=(batch_size, sequence_length), dtype=np.int32)
-            running_cost_batch = self.get_running_cost(scheduling_action, task_graph_batch)
+            running_cost_batch, reliability_batch = self.get_running_cost(scheduling_action, task_graph_batch)
             running_cost.append(np.mean(running_cost_batch))
 
-        return running_cost
+            running_rel.append((np.mean(reliability_batch)))
+        return running_cost, running_rel
 
+    """
+    change in get_all_mec_execute_time: reliability sampling    
+    """
     def get_all_mec_execute_time(self):
         running_cost = []
 
+        running_rel = []
         for task_graph_batch, encode_batch in zip(self.task_graphs_batchs, self.encoder_batchs):
             batch_size = encode_batch.shape[0]
             sequence_length = encode_batch.shape[1]
 
             scheduling_action = np.ones(shape=(batch_size, sequence_length), dtype=np.int32)
-            running_cost_batch = self.get_running_cost(scheduling_action, task_graph_batch)
+            running_cost_batch, reliability_batch = self.get_running_cost(scheduling_action, task_graph_batch)
 
             running_cost.append(np.mean(running_cost_batch))
 
+            running_rel.append(np.mean(reliability_batch))
         return running_cost
 
     def greedy_solution_for_current_task(self):
-        result_plan, finish_time_batchs = self.greedy_solution()
+        result_plan, finish_time_batchs, reliability_batchs = self.greedy_solution()
 
-        return result_plan[self.task_id], finish_time_batchs[self.task_id]
+        return result_plan[self.task_id], finish_time_batchs[self.task_id], reliability_batchs[self.task_id]
 
 
 
