@@ -520,7 +520,6 @@ class OffloadingEnvironment(MetaEnv):
 
         return return_latency, current_FT, total_reliability
 
-
     def score_func(self, cost, max_time, min_time):
         return -(cost - min_time) / (max_time - min_time)
 
