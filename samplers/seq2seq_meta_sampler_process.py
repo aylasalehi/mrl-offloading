@@ -106,7 +106,7 @@ class Seq2SeqMetaSamplerProcessor(SampleProcessor):
         advantages = np.array([path["advantages"] for path in paths])
         finish_time = np.array([path["finish_time"] for path in paths])
 
-        reliability = np.array(path["reliability"] for path in paths)
+        reliability = np.array([path["reliability"] for path in paths])
 
         
         return observations, actions,logits, rewards, returns, values, advantages, finish_time, reliability

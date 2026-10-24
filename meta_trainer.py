@@ -11,6 +11,7 @@ class Trainer(object):
                 policy,
                 n_itr,
                 greedy_finish_time,
+                greedy_reliability,
                 start_itr=0,
                 inner_batch_size = 500,
                 save_interval = 100):
@@ -22,7 +23,8 @@ class Trainer(object):
         self.n_itr = n_itr  # Total number of meta-training iterations (K in Algorithm 1) 
         self.start_itr = start_itr
         self.inner_batch_size = inner_batch_size  # Batch size for the PPO inner update
-        self.greedy_finish_time = greedy_finish_time  # Pre-calculated baseline for logging 
+        self.greedy_finish_time = greedy_finish_time  # Pre-calculated baseline for logging
+        self.greedy_reliability = greedy_reliability
         self.save_interval = save_interval  # How often to save model checkpoints
 
     """
@@ -53,6 +55,9 @@ class Trainer(object):
 
             greedy_run_time = [self.greedy_finish_time[x] for x in task_ids]
             logger.logkv('Average greedy latency,', np.mean(greedy_run_time))
+
+            greedy_run_time = [self.greedy_reliability[x] for x in task_ids]
+            logger.logkv('Average greedy reliability,', np.mean(greedy_run_time))
 
             """ ----------------- Processing Samples ---------------------"""
             logger.log("Processing samples...")
@@ -210,6 +215,7 @@ if __name__ == "__main__":
                         policy=meta_policy,
                         n_itr=2000,
                         greedy_finish_time= greedy_finish_time,
+                        greedy_reliability=greedy_reliability,
                         start_itr=0,
                         inner_batch_size=1000)
 

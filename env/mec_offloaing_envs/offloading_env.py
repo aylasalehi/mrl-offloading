@@ -815,7 +815,7 @@ class OffloadingEnvironment(MetaEnv):
             running_cost.append(np.mean(running_cost_batch))
 
             running_rel.append(np.mean(reliability_batch))
-        return running_cost
+        return running_cost, running_rel
 
     def greedy_solution_for_current_task(self):
         result_plan, finish_time_batchs, reliability_batchs = self.greedy_solution()

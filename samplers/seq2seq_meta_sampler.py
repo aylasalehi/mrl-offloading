@@ -55,6 +55,9 @@ class Seq2SeqMetaSampler(Sampler):
 
         return tasks
 
+    """
+    change in obtain_samples: reliability computation added
+    """
     def obtain_samples(self, log=False, log_prefix=''):
         """
         Collect batch_size trajectories from each task
@@ -96,7 +99,7 @@ class Seq2SeqMetaSampler(Sampler):
             t = time.time()
             # actions = np.concatenate(actions)
 
-            next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
+            next_obses, rewards, dones, env_infos, rel_infos = self.vec_env.step(actions)
 
             # print("rewards shape is: ", np.array(rewards).shape)
             # print("finish time shape is: ", np.array(env_infos).shape)
@@ -106,18 +109,19 @@ class Seq2SeqMetaSampler(Sampler):
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
             new_samples = 0
-            for idx, observation, action, logit, reward, value, done, task_finish_times in zip(itertools.count(), obses, actions, logits,
-                                                                                    rewards, values, dones, env_infos):
+            for idx, observation, action, logit, reward, value, done, task_finish_times, task_reliabilities in zip(itertools.count(), obses, actions, logits,
+                                                                                    rewards, values, dones, env_infos, rel_infos):
                 # append new samples to running paths
 
                 # handling
-                for single_ob, single_ac, single_logit, single_reward, single_value, single_task_finish_time \
-                        in zip(observation, action, logit, reward, value, task_finish_times):
+                for single_ob, single_ac, single_logit, single_reward, single_value, single_task_finish_time, single_task_reliability \
+                        in zip(observation, action, logit, reward, value, task_finish_times, task_reliabilities):
                     running_paths[idx]["observations"]= single_ob
                     running_paths[idx]["actions"] = single_ac
                     running_paths[idx]["logits"] = single_logit
                     running_paths[idx]["rewards"] = single_reward
                     running_paths[idx]["finish_time"] = single_task_finish_time
+                    running_paths[idx]["reliability"] = single_task_reliability
                     running_paths[idx]["values"] = single_value
 
                     paths[idx // self.envs_per_task].append(dict(
@@ -126,6 +130,7 @@ class Seq2SeqMetaSampler(Sampler):
                         logits = np.squeeze(np.asarray(running_paths[idx]["logits"])),
                         rewards=np.squeeze(np.asarray(running_paths[idx]["rewards"])),
                         finish_time = np.squeeze(np.asarray(running_paths[idx]["finish_time"])),
+                        reliability = np.squeeze(np.asarray(running_paths[idx]["reliability"])),
                         values  = np.squeeze(np.asarray(running_paths[idx]["values"]))
                     ))
 
@@ -143,6 +148,7 @@ class Seq2SeqMetaSampler(Sampler):
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
         return paths
+
 
 def _get_empty_running_paths_dict():
     return dict(observations=[], actions=[], logits=[], rewards=[])
