@@ -2,6 +2,7 @@ import numpy as np
 from graphviz import Digraph
 import json
 import pydotplus
+from collections import deque
 
 class OffloadingTask(object):
     def __init__(self, id_name, process_data_size, transmission_data_size, type_name, depth=0, heft_score=0 ):
@@ -145,6 +146,8 @@ class OffloadingTaskGraph(object):
 
         for pair in dependencies:
             self.add_dependency(pair[0], pair[1], pair[2])
+
+        self.topological_sequence = self.topological_sort()
 
         # get max data size and min data size, used to feature scaling.
         self.max_data_size = np.max(self.dependency[self.dependency > 0.01])
@@ -292,6 +295,35 @@ class OffloadingTaskGraph(object):
         print(self.pre_task_sets)
         print("This is edge set:")
         print(self.edge_set)
+
+    '''
+    added for handling topological sort: used for greedy solution
+    '''
+    def topological_sort(self):
+        indegree = [0] * self.task_number
+        for i in range(self.task_number):
+            for j in self.succ_task_sets[i]:
+                # for each successor of task i the number of its predecessors is calculated
+                indegree[j] += 1
+
+        queue = deque()
+        for i in range(self.task_number):
+            if indegree[i] == 0:
+                queue.append(i)
+
+        topological_sequence = []
+        while queue:
+            task = queue.popleft()
+            topological_sequence.append(task)
+            for successor in self.succ_task_sets[task]:
+                indegree[successor] -= 1
+                if indegree[successor] == 0:
+                    queue.append(successor)
+
+        self.topological_sequence = np.array(topological_sequence)
+
+        return self.topological_sequence
+
 
     def prioritize_tasks(self, resource_cluster):
         w = [0] * self.task_number
