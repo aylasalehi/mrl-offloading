@@ -562,6 +562,9 @@ class OffloadingEnvironment(MetaEnv):
 
     """
     change in greedy_solution: wr_available/start_time changed + reliability computation
+    greedy_solution() function implements HEFT-Based offloading algorithm
+    for implementing greedy algorithm topological_sort() function is implemented in offloading_task_graph and
+    topological_sequence is required as the input
     """
 
     def greedy_solution(self):
